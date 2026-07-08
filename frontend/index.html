@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Chatbot</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="auth-view">
+    <h2>Sign in</h2>
+    <input id="email" type="email" placeholder="Email">
+    <input id="password" type="password" placeholder="Password">
+    <button onclick="register()">Register</button>
+    <button onclick="login()">Login</button>
+    <p id="auth-error"></p>
+  </div>
+
+  <div id="chat-view" style="display:none">
+    <div id="messages"></div>
+    <div id="approval" style="display:none">
+      <p id="approval-prompt"></p>
+      <button onclick="respondApproval('yes')">Approve</button>
+      <button onclick="respondApproval('no')">Decline</button>
+    </div>
+    <input id="chat-input" type="text" placeholder="Type a message...">
+    <button onclick="sendMessage()">Send</button>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
