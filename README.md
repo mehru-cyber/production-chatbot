@@ -1,9 +1,28 @@
 # Production LangGraph Chatbot
 
-A LangGraph chatbot with short-term memory (Postgres checkpoints), long-term
-memory (Postgres semantic store), tool calling, a human-in-the-loop approval
-gate for trades, authentication, rate limiting, cost caps, and basic
-observability — built to actually be deployed, not just demoed.
+A full-stack AI agent backend: LangGraph orchestration, dual-layer memory,
+tool calling, and a genuine human-in-the-loop approval gate — built and
+hardened end-to-end rather than left as a notebook demo.
+
+**What this demonstrates:**
+- **Agent orchestration** — LangGraph state machine with conditional
+  routing, a tool-calling loop, and a real `interrupt()`/`Command(resume=…)`
+  human-approval gate (not a UI-only confirm dialog — the graph execution
+  itself genuinely pauses and resumes mid-tool-call).
+- **Memory architecture** — short-term memory via Postgres-backed
+  checkpoints (with automatic trimming/summarization once a conversation
+  grows long) and long-term memory via a separate Postgres semantic store,
+  namespaced per user and read back into every prompt.
+- **Provider-agnostic LLM layer** — swappable between OpenAI and any
+  OpenAI-API-compatible provider (shipped and tested against Groq) via two
+  environment variables, no code changes.
+- **Production concerns, not just a happy path** — JWT auth with bcrypt
+  hashing, per-user rate limiting, a Postgres-backed daily token/cost cap,
+  structured logging, retry/backoff and graceful degradation on external
+  API calls, and a documented "what's real vs. simulated" boundary for the
+  trading feature (see below).
+- **Debugged and deployed against a real managed database** (Supabase),
+  with cross-platform setup verified on Windows.
 
 ---
 
@@ -139,24 +158,12 @@ curl -X POST http://localhost:8000/chat \
 
 ---
 
-## 5. Troubleshooting — errors you may hit on first setup
+## 5. Troubleshooting
 
-These are real issues encountered getting this running from scratch. If
-`pip install`, `init_postgres.py`, or `uvicorn` fail, check here first.
-
-| Error | Cause | Fix |
-|---|---|---|
-| `ModuleNotFoundError: No module named 'app'` running `python scripts/init_postgres.py` | Python doesn't add the project root to its path when you run a script directly from a subfolder. | Already fixed in this repo — `init_postgres.py` inserts the project root onto `sys.path` itself. If you still see this, confirm you're running the command from the project root, not from inside `scripts/`. |
-| `ModuleNotFoundError: No module named 'psycopg2'` | SQLAlchemy defaults to the `psycopg2` driver on a bare `postgresql://` URL, but this project installs `psycopg` (v3) instead. | Already fixed — `app/db/session.py` rewrites the URL to `postgresql+psycopg://` internally. Your `.env` value stays a plain `postgresql://...`. |
-| `connection to server at "127.0.0.1", port 5442 failed` | `DATABASE_URL` in `.env` is still the local Docker value, but nothing's running there (e.g. you're using Supabase/Neon instead, or forgot `docker compose up -d postgres`). | Point `DATABASE_URL` at wherever your Postgres actually is. See section 4a. Verify with: `python -c "from app.config import settings; print(settings.database_url)"` |
-| `ImportError: email-validator is not installed` | Missing dependency for `pydantic`'s `EmailStr` used in registration. | `pip install email-validator` (already added to `requirements.txt` — re-run `pip install -r requirements.txt` if you're on an older copy). |
-| `ImportError: Could not import duckduckgo-search` | Missing dependency for the optional web-search tool. | `pip install duckduckgo-search` (also already in `requirements.txt`). The app is designed to skip this tool gracefully if it's missing rather than crash — if it still crashes your whole app, you're on an older copy of `app/graph/tools.py`. |
-| `AttributeError: module 'bcrypt' has no attribute '__about__'` / `password cannot be longer than 72 bytes` | `passlib` 1.7.4 is incompatible with `bcrypt` 4.1+. | `pip install "bcrypt==4.0.1"` (already pinned in `requirements.txt`). |
-| `No matching distribution found for faiss-cpu==1.9.0` | That exact version has no wheel for newer Python releases (3.13+). | Already relaxed to `faiss-cpu>=1.9.0` in `requirements.txt`. |
-| `OPTIONS /auth/register` repeatedly returns `400` | You opened `frontend/index.html` by double-clicking it. Browsers treat local files as origin `null`, which isn't in the CORS allowlist. | Serve the frontend over HTTP instead: `cd frontend && python -m http.server 5500`, then visit `http://localhost:5500` (already covered by the default `CORS_ALLOWED_ORIGINS`). |
-| `openai.AuthenticationError: Invalid API Key` / `insufficient_quota` | `OPENAI_API_KEY` is still the `.env.example` placeholder, wrong, or the OpenAI account has no billing set up. | Double-check with `python -c "from app.config import settings; print(settings.openai_api_key[:8])"`. For a free option with no billing at all, use Groq — see the keys table above. |
-| `This model does not support response format 'json_schema'` | Some providers (including Groq's Llama models) don't support the newer structured-output mode LangChain defaults to. | Already fixed — `memory_nodes.py` requests `method="function_calling"` explicitly, which is broadly supported. |
-| **`.env` edits don't seem to take effect** | Two common causes: (1) uvicorn only reads `.env` at startup — editing it while the server's running does nothing until you restart; (2) Notepad's "Save As" can silently create `.env.txt` instead of overwriting `.env`. | Always restart (`Ctrl+C`, then re-run `uvicorn`) after any `.env` change. Confirm the file is really named `.env` with `dir .env*`. To sanity-check what the app is actually reading: `python -c "from app.config import settings; print(settings.openai_api_key[:8], settings.database_url.split('@')[-1])"` |
+Hit an error during setup? See **[TROUBLESHOOTING.md](./TROUBLESHOOTING.md)**
+— covers dependency version conflicts, CORS on local files, provider
+migration quirks (OpenAI → Groq), and a couple of Windows/`.env` gotchas
+encountered building this.
 
 ---
 
