@@ -12,7 +12,12 @@ from app.graph.tools import get_all_tools
 
 # A single long-lived connection pool backs both the checkpointer (STM) and
 # the store (LTM) for the lifetime of the app process.
-_pool = ConnectionPool(conninfo=settings.database_url, max_size=10, kwargs={"autocommit": True})
+_pool = ConnectionPool(
+    conninfo=settings.database_url,
+    max_size=10,
+    max_idle=300,  # seconds; recycle idle connections well before most providers would
+    kwargs={"autocommit": True},
+)
 
 _checkpointer = PostgresSaver(_pool)
 _store = PostgresStore(_pool)
