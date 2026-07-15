@@ -1,0 +1,9 @@
+@router.post("/login", response_model=TokenResponse)
+def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    # form_data.username carries the email — this is OAuth2 form spec, not a naming choice
+    user = db.query(User).filter(User.email == form_data.username).first()
+
+    # Same error message whether the email doesn't exist or the password is
+    # wrong — don't leak which one it was, that's an account-enumeration risk.
+    generic_error = HTTPException(status_code=401, detail="Incorrect email or password")
+

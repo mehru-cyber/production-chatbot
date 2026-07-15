@@ -1,5 +1,5 @@
 const API_BASE = "http://localhost:8000";
-const THREAD_ID = "thread-" + Math.random().toString(36).slice(2, 10);
+const THREAD_ID = crypto.randomUUID();
 
 const el = (id) => document.getElementById(id);
 const authScreen = el("auth-screen");
@@ -10,18 +10,19 @@ const authError = el("auth-error");
 const composer = el("composer");
 const chatInput = el("chat-input");
 
-let pendingTicketEl = null;
-
 function getToken() {
   return localStorage.getItem("token");
 }
-
-function setToken(token) {
-  localStorage.setItem("token", token);
+function getRefreshToken() {
+  return localStorage.getItem("refresh_token");
 }
-
-function clearToken() {
+function setTokens(accessToken, refreshToken) {
+  localStorage.setItem("token", accessToken);
+  if (refreshToken) localStorage.setItem("refresh_token", refreshToken);
+}
+function clearTokens() {
   localStorage.removeItem("token");
+  localStorage.removeItem("refresh_token");
 }
 
 // ---------- Auth ----------
@@ -49,25 +50,59 @@ function formatDetail(detail) {
 
 async function register(email, password) {
   const data = await authRequest("/auth/register", { email, password }, false);
-  onAuthed(data.access_token);
+  if (data.status === "verification_sent") {
+    authError.textContent = "Check your email to verify your account, then log in.";
+    return;
+  }
+  onAuthed(data.access_token, data.refresh_token);
 }
 
 async function login(email, password) {
   const body = new URLSearchParams({ username: email, password });
   const data = await authRequest("/auth/login", body, true);
-  onAuthed(data.access_token);
+  onAuthed(data.access_token, data.refresh_token);
 }
 
-function onAuthed(token) {
-  setToken(token);
+async function tryRefresh() {
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) return false;
+  try {
+    const res = await fetch(`${API_BASE}/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    setTokens(data.access_token, data.refresh_token);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function onAuthed(accessToken, refreshToken) {
+  setTokens(accessToken, refreshToken);
   authScreen.hidden = true;
   chatScreen.hidden = false;
   el("thread-id-display").textContent = THREAD_ID;
   chatInput.focus();
 }
 
-function logout() {
-  clearToken();
+async function logout() {
+  const refreshToken = getRefreshToken();
+  if (refreshToken) {
+    try {
+      await fetch(`${API_BASE}/auth/logout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      });
+    } catch {
+      // best-effort — clear local tokens regardless of whether this succeeds
+    }
+  }
+  clearTokens();
   chatScreen.hidden = true;
   authScreen.hidden = false;
   messageLog.innerHTML = "";
@@ -136,9 +171,8 @@ function appendTicket(prompt) {
   const node = appendFromTemplate("tpl-ticket");
   node.querySelector(".ticket-prompt").textContent = prompt;
   node.querySelectorAll("[data-decision]").forEach((btn) => {
-    btn.addEventListener("click", () => resolveTicket(node, btn.dataset.decision));
+    btn.addEventListener("click", () => resolveTicket(node, btn.dataset.decision, prompt));
   });
-  pendingTicketEl = node;
   return node;
 }
 
@@ -151,7 +185,7 @@ function resolveTicketUI(node, decision) {
 
 // ---------- Chat ----------
 
-async function chatRequest(path, body) {
+async function chatRequest(path, body, isRetry) {
   const res = await fetch(`${API_BASE}${path}`, {
     method: "POST",
     headers: {
@@ -162,8 +196,15 @@ async function chatRequest(path, body) {
   });
 
   if (res.status === 401) {
+    if (!isRetry && (await tryRefresh())) {
+      return chatRequest(path, body, true);
+    }
     appendSystemMessage("Session expired — please log in again.");
     setTimeout(logout, 1200);
+    return null;
+  }
+  if (res.status === 423) {
+    appendSystemMessage("Account temporarily locked due to failed login attempts.");
     return null;
   }
   if (res.status === 429) {
@@ -197,10 +238,10 @@ composer.addEventListener("submit", async (e) => {
   handleChatResponse(data);
 });
 
-async function resolveTicket(node, decision) {
+async function resolveTicket(node, decision, prompt) {
   resolveTicketUI(node, decision);
   const typingNode = showTyping();
-  const data = await chatRequest("/chat/resume", { thread_id: THREAD_ID, decision });
+  const data = await chatRequest("/chat/resume", { thread_id: THREAD_ID, decision, prompt });
   typingNode.remove();
   handleChatResponse(data);
 }
@@ -208,5 +249,5 @@ async function resolveTicket(node, decision) {
 // ---------- Boot ----------
 
 if (getToken()) {
-  onAuthed(getToken());
+  onAuthed(getToken(), getRefreshToken());
 }

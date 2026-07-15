@@ -1,15 +1,20 @@
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    
-   # required
+    # required
     openai_api_key: str
     database_url: str
     jwt_secret_key: str
 
+    # LLM provider — defaults to OpenAI, but any OpenAI-API-compatible
+    # provider works by overriding these two. E.g. for Groq's free tier:
+    #   openai_api_key = <your Groq key>
+    #   llm_base_url   = https://api.groq.com/openai/v1
+    #   chat_model     = llama-3.3-70b-versatile
     llm_base_url: str | None = None
     chat_model: str = "gpt-4o-mini"
 
@@ -33,6 +38,22 @@ class Settings(BaseSettings):
 
     jwt_algorithm: str = "HS256"
 
+    # security hardening
+    refresh_token_expire_days: int = 30
+    max_failed_login_attempts: int = 5
+    lockout_minutes: int = 15
+    enforce_https: bool = False  # set True in production behind a real TLS-terminating proxy
+    expose_api_docs: bool = True  # set False in production — /docs, /redoc, /openapi.json hand an attacker a free map of every endpoint and schema
+
+    # optional email verification — if unset, accounts are auto-verified and
+    # no email is ever sent. Set all of these to require verified emails.
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_from: str | None = None
+    app_base_url: str = "http://localhost:8000"
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_allowed_origins.split(",") if o.strip()]
@@ -48,6 +69,10 @@ class Settings(BaseSettings):
     @property
     def langfuse_configured(self) -> bool:
         return bool(self.langfuse_public_key and self.langfuse_secret_key)
+
+    @property
+    def smtp_configured(self) -> bool:
+        return bool(self.smtp_host and self.smtp_username and self.smtp_password and self.smtp_from)
 
 
 settings = Settings()

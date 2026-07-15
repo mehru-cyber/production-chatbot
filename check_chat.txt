@@ -1,0 +1,22 @@
+@router.post("", response_model=ChatResponse)
+def send_message(
+    payload: ChatRequest,
+    current_user: User = Depends(check_rate_limit),
+    db: Session = Depends(get_db),
+):
+    _authorize_thread(db, payload.thread_id, current_user.id)
+    reserved = reserve_usage_or_raise(db, current_user.id)
+
+    config = _run_config(payload.thread_id, str(current_user.id))
+    result = chatbot.invoke({"messages": [HumanMessage(content=payload.message)]}, config)
+
+    tokens = _extract_token_usage(result)
+    reconcile_usage(db, current_user.id, reserved, tokens)
+
+    interrupts = result.get("__interrupt__", [])
+    if interrupts:
+        return ChatResponse(status="pending_approval", prompt=interrupts[0].value, thread_id=payload.thread_id)
+
+    last_message = result["messages"][-1]
+    return ChatResponse(status="ok", reply=last_message.content, thread_id=payload.thread_id)
+
