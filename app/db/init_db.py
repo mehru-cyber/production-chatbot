@@ -9,15 +9,14 @@ from app.observability.logging_config import get_logger
 
 log = get_logger(__name__)
 
-# Postgres supports `ADD COLUMN IF NOT EXISTS`, making this safe to re-run —
-# needed because `create_all()` only creates missing *tables*, it never
-# alters columns on a table that already exists (e.g. your live `users`
-# table from before these security columns were added).
 _USER_COLUMN_MIGRATIONS = [
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_login_attempts INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMP NULL",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_token VARCHAR NULL",
+    "ALTER TABLE chat_threads ADD COLUMN IF NOT EXISTS title VARCHAR NULL",
+    "ALTER TABLE chat_threads ADD COLUMN IF NOT EXISTS pinned BOOLEAN NOT NULL DEFAULT FALSE",
+    "ALTER TABLE chat_threads ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT NOW()",
 ]
 
 
@@ -30,7 +29,6 @@ def init_app_tables() -> None:
 
 
 def init_langgraph_tables() -> None:
-    # PostgresSaver = short-term memory (checkpoints), PostgresStore = long-term memory
     with PostgresSaver.from_conn_string(settings.database_url) as checkpointer:
         checkpointer.setup()
     with PostgresStore.from_conn_string(settings.database_url) as store:

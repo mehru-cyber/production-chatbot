@@ -39,12 +39,9 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
-    # account lockout (brute-force protection)
     failed_login_attempts = Column(Integer, nullable=False, default=0)
     locked_until = Column(DateTime, nullable=True)
 
-    # email verification — only enforced if SMTP is configured; otherwise
-    # accounts are created already verified and this is unused.
     email_verified = Column(Boolean, nullable=False, default=False)
     verification_token = Column(String, nullable=True)
 
@@ -88,12 +85,13 @@ class ApprovalAuditLog(Base):
 
 class ChatThread(Base):
     """
-    Tracks which user owns which LangGraph thread_id. LangGraph's Postgres
+    Tracks which user owns which LangGraph thread_id, plus display metadata
+    for the sidebar (title, pinned, last-active time). LangGraph's Postgres
     checkpointer keys conversation state by thread_id alone, with no
     built-in per-user scoping — without this table, any user who learned or
     guessed another user's thread_id could send messages into that
-    conversation. Every /chat and /chat/resume call checks this table
-    before touching the graph.
+    conversation. Every /chat, /chat/stream, and /chat/resume call checks
+    this table before touching the graph.
     """
 
     __tablename__ = "chat_threads"
@@ -101,6 +99,9 @@ class ChatThread(Base):
     thread_id = Column(String, primary_key=True)
     user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    title = Column(String, nullable=True)
+    pinned = Column(Boolean, nullable=False, default=False)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
 class UsageLog(Base):
@@ -113,16 +114,7 @@ class UsageLog(Base):
     day = Column(String, nullable=False, index=True)  # "YYYY-MM-DD", simple + index-friendly
     tokens_used = Column(Integer, nullable=False, default=0)
 
-class ChatThread(Base):
-    """Binds a thread_id to the user who created it. Checked on every
-    /chat and /chat/resume call so one user can't read or act on
-    (e.g. approve a purchase in) another user's conversation."""
 
-    __tablename__ = "chat_threads"
-
-    thread_id = Column(String, primary_key=True)
-    user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
 def get_db() -> Session:
     db = SessionLocal()
     try:
