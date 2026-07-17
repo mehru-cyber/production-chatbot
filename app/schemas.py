@@ -1,3 +1,5 @@
+import datetime
+
 from pydantic import BaseModel, Field
 
 
@@ -17,3 +19,33 @@ class ChatResponse(BaseModel):
     reply: str | None = None
     prompt: str | None = None
     thread_id: str
+
+
+class ThreadSummary(BaseModel):
+    thread_id: str
+    title: str
+    pinned: bool
+    updated_at: datetime.datetime
+
+
+class ThreadListResponse(BaseModel):
+    threads: list[ThreadSummary]
+
+
+class CreateThreadResponse(BaseModel):
+    thread_id: str
+
+
+class UpdateThreadRequest(BaseModel):
+    title: str | None = Field(default=None, max_length=60)
+    pinned: bool | None = None
+
+
+class MessageItem(BaseModel):
+    role: str  # "user" | "assistant"
+    content: str
+
+
+class ThreadMessagesResponse(BaseModel):
+    thread_id: str
+    messages: list[MessageItem]

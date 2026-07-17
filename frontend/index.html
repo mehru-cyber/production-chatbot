@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Agent Console</title>
+<title>Stock Agent</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
@@ -14,7 +14,7 @@
   <div class="auth-card">
     <div class="brand">
       <span class="brand-dot"></span>
-      <span class="brand-name">AGENT CONSOLE</span>
+      <span class="brand-name">STOCK AGENT</span>
     </div>
     <p class="auth-sub">Sign in to start a session</p>
 
@@ -38,27 +38,52 @@
   </div>
 </div>
 
-<div id="chat-screen" class="screen" hidden>
-  <header class="console-header">
-    <div class="brand">
-      <span class="brand-dot brand-dot--live"></span>
-      <span class="brand-name">AGENT CONSOLE</span>
+<div id="app-shell" class="screen screen--shell">
+
+  <aside id="sidebar">
+    <div class="sidebar-header">
+      <div class="brand">
+        <span class="brand-dot brand-dot--live"></span>
+        <span class="brand-name">STOCK AGENT</span>
+      </div>
+      <button id="sidebar-close-btn" class="btn-icon btn-icon--mobile" aria-label="Close sidebar">✕</button>
     </div>
-    <div class="session-meta">
-      <span class="meta-label">THREAD</span>
-      <span id="thread-id-display" class="meta-value">—</span>
+
+    <button id="new-chat-btn" class="btn btn-new-chat">
+      <span class="new-chat-icon">+</span> New chat
+    </button>
+
+    <nav class="thread-nav">
+      <div class="thread-section">
+        <h3 class="thread-section-label">PINNED</h3>
+        <div id="pinned-list" class="thread-list"></div>
+      </div>
+      <div class="thread-section">
+        <h3 class="thread-section-label">RECENT</h3>
+        <div id="recent-list" class="thread-list"></div>
+      </div>
+    </nav>
+
+    <div class="sidebar-footer">
       <button id="logout-btn" class="btn-icon" title="Log out" aria-label="Log out">⏻</button>
     </div>
-  </header>
+  </aside>
 
-  <main id="message-log" class="message-log" aria-live="polite"></main>
+  <main id="main-panel">
+    <header class="console-header">
+      <button id="sidebar-open-btn" class="btn-icon btn-icon--mobile" aria-label="Open sidebar">☰</button>
+      <span id="current-thread-title" class="meta-value meta-value--title">New chat</span>
+    </header>
 
-  <form id="composer" class="composer">
-    <span class="composer-prompt" aria-hidden="true">&gt;</span>
-    <input id="chat-input" class="composer-input" type="text"
-           placeholder="Message the agent…" autocomplete="off">
-    <button type="submit" class="btn btn-primary btn-send">Send</button>
-  </form>
+    <div id="message-log" class="message-log" aria-live="polite"></div>
+
+    <form id="composer" class="composer">
+      <span class="composer-prompt" aria-hidden="true">&gt;</span>
+      <input id="chat-input" class="composer-input" type="text"
+             placeholder="Message the agent…" autocomplete="off">
+      <button type="submit" class="btn btn-primary btn-send">Send</button>
+    </form>
+  </main>
 </div>
 
 <template id="tpl-message-user">
@@ -97,6 +122,13 @@
   <div class="msg msg--agent msg--typing">
     <span class="msg-label">AGENT</span>
     <div class="msg-bubble typing-dots"><span></span><span></span><span></span></div>
+  </div>
+</template>
+
+<template id="tpl-thread-item">
+  <div class="thread-item">
+    <span class="thread-title"></span>
+    <button class="pin-btn" title="Pin/unpin chat" aria-label="Pin/unpin chat">☆</button>
   </div>
 </template>
 
