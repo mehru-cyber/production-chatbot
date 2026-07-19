@@ -1,4 +1,4 @@
-const API_BASE = "http://localhost:8000";
+const API_BASE = "https://production-chatbot-production.up.railway.app";
 
 let CURRENT_THREAD_ID = null;
 
