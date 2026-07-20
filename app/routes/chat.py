@@ -5,6 +5,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessage, HumanMessage
+from langgraph.errors import GraphInterrupt
 from langgraph.types import Command
 from sqlalchemy.orm import Session
 
@@ -176,38 +177,6 @@ def send_message(
     return ChatResponse(status="ok", reply=last_message.content, thread_id=payload.thread_id)
 
 
-@router.post("/resume", response_model=ChatResponse)
-def resume(
-    payload: ResumeRequest,
-    current_user: User = Depends(check_rate_limit),
-    db: Session = Depends(get_db),
-):
-    thread = _authorize_thread(db, payload.thread_id, current_user.id)
-    reserved = reserve_usage_or_raise(db, current_user.id)
-
-    config = _run_config(payload.thread_id, str(current_user.id))
-
-    real_prompt = _get_real_pending_prompt(config) or "(no pending interrupt found)"
-    db.add(
-        ApprovalAuditLog(
-            user_id=current_user.id,
-            thread_id=payload.thread_id,
-            prompt=real_prompt,
-            decision=payload.decision,
-        )
-    )
-    db.commit()
-
-    result = chatbot.invoke(Command(resume=payload.decision), config)
-
-    tokens = _extract_token_usage(result)
-    reconcile_usage(db, current_user.id, reserved, tokens)
-    _touch_thread(db, thread)
-
-    last_message = result["messages"][-1]
-    return ChatResponse(status="ok", reply=last_message.content, thread_id=payload.thread_id)
-
-
 @router.post("/stream")
 def send_message_stream(
     payload: ChatRequest,
@@ -220,33 +189,31 @@ def send_message_stream(
 
     def event_generator():
         try:
-            for message_chunk, metadata in chatbot.stream(
-                {"messages": [HumanMessage(content=payload.message)]},
-                config,
-                stream_mode="messages",
-            ):
-                if metadata.get("langgraph_node") != "chat":
-                    continue
-                content = getattr(message_chunk, "content", None)
-                if content:
-                    yield _sse("token", {"content": content})
-
+            try:
+                for message_chunk, metadata in chatbot.stream(
+                    {"messages": [HumanMessage(content=payload.message)]},
+                    config,
+                    stream_mode="messages",
+                ):
+                    if metadata.get("langgraph_node") != "chat":
+                        continue
+                    content = getattr(message_chunk, "content", None)
+                    if content:
+                        yield _sse("token", {"content": content})
+            except GraphInterrupt:
+                pass
             snapshot = chatbot.get_state(config)
-
             pending_prompt = None
             for task in getattr(snapshot, "tasks", []):
                 for interrupt in getattr(task, "interrupts", []):
                     pending_prompt = interrupt.value
-
             tokens = _extract_token_usage(snapshot.values)
             reconcile_usage(db, current_user.id, reserved, tokens)
             _touch_thread(db, thread, first_message=payload.message)
-
             if pending_prompt:
                 yield _sse("interrupt", {"prompt": pending_prompt})
             else:
                 yield _sse("done", {})
-
         except Exception as exc:
             log.error("stream_failed", error=str(exc), thread_id=payload.thread_id)
             reconcile_usage(db, current_user.id, reserved, 0)
